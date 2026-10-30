@@ -138,8 +138,16 @@ int tnfs_camera_000436ac(int node, tnfs_vec3 *position) {
 	return curr_node_pos.y - iVar1;
 }
 
+/*
+ * The camera's track node for the sound code: DOS tnfs_camera_00041f9f (0x41f9f), called by tnfs_camera_update in the
+ * in-car camera with the car's track_slice. The road object hit sound (tnfs_collision_road_object: only within -8 .. 9
+ * nodes of the camera) and the crash and car-car code read g_camera_node; the original also marks the renderer's track
+ * vertex lists dirty on a change (DAT_00144918 |= 1), which the port has no use for.
+ */
 void sub_41F9F(int track_slice) {
-	//stub
+	if (g_camera_node != track_slice) {
+		g_camera_node = track_slice;
+	}
 }
 
 int sub_6356B(int a, int b) {
