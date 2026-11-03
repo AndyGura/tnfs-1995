@@ -2878,7 +2878,7 @@ void tnfs_car_update_center_line(tnfs_car_data *car) {
  * setup everything
  */
 void tnfs_init_sim(char *trifile, char *pbsfile) {
-	int i, j;
+	int i;
 
 	g_pbs_file = pbsfile;
 
@@ -3002,24 +3002,6 @@ void tnfs_init_sim(char *trifile, char *pbsfile) {
 
 	// "player first moves" highlight done (DOS _DAT_00153b18, cleared in tnfs_game_reset_stats 0x637d8)
 	DAT_800f62c0 = 0;
-	for (i = 0; i < 8; i++) {
-		g_stats_data[i].best_accel_time_1 = 99999;
-		g_stats_data[i].best_accel_time_2 = 99999;
-		g_stats_data[i].best_brake_time_2 = 999;
-		g_stats_data[i].best_brake_time_1 = 999;
-		g_stats_data[i].quarter_mile_speed = 0;
-		g_stats_data[i].quarter_mile_time = 99999;
-		g_stats_data[i].penalty_count = 0;
-		g_stats_data[i].warning_count = 0;
-		g_stats_data[i].field_0x1b8 = 0;
-		g_stats_data[i].prev_lap_time = 0;
-		g_stats_data[i].lap_time = 0;
-		g_stats_data[i].top_speed = 0;
-		g_stats_data[i].top_speed_2 = 0;
-		for (j = 0; j < 17; j++) {
-			g_stats_data[i].lap_timer[j] = 0;
-		}
-	}
 
 	// init player car
 	tnfs_init_car();
@@ -3170,6 +3152,29 @@ void tnfs_update() {
  * it; a front end that sets the cars up again after tnfs_init_sim (tnfs_ai_init) calls it again afterwards.
  */
 void tnfs_sim_start() {
+	int i, j;
+
+	// stats of the racers only (DOS tnfs_game_reset_stats 0x637d8 -> 0x85ac2, SE 0x45aab4: the first
+	// g_num_of_racers_00153b34 records, 1 in time trial, 2 head-to-head, else all racers), right before the warm-up loops
+	for (i = 0; i < (g_opponent_skill == 0 ? 1 : (g_opponent_skill == 1 ? 2 : g_racer_cars_in_scene)); i++) {
+		g_stats_data[i].best_accel_time_1 = 99999;
+		g_stats_data[i].best_accel_time_2 = 99999;
+		g_stats_data[i].best_brake_time_2 = 999;
+		g_stats_data[i].best_brake_time_1 = 999;
+		g_stats_data[i].quarter_mile_speed = 0;
+		g_stats_data[i].quarter_mile_time = 99999;
+		g_stats_data[i].penalty_count = 0;
+		g_stats_data[i].warning_count = 0;
+		g_stats_data[i].field_0x1b8 = 0;
+		g_stats_data[i].prev_lap_time = 0;
+		g_stats_data[i].lap_time = 0;
+		g_stats_data[i].top_speed = 0;
+		g_stats_data[i].top_speed_2 = 0;
+		for (j = 0; j < 17; j++) {
+			g_stats_data[i].lap_timer[j] = 0;
+		}
+	}
+
 	iSimTimeClock = 0;
 	general_flags = 0xffffffff;
 	g_is_playing = 0;
