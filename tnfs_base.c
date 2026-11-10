@@ -2476,11 +2476,15 @@ void tnfs_replay_speed_command(int command, int repeat) {
 	}
 }
 
+// compile-time check: the lap times end before the best times at 0x198 of a stats record (TNFS_MAX_LAPS <= 101)
+typedef char tnfs_replay_stats_lap_times_fit[(TNFS_MAX_LAPS + 1) * 4 <= 0x198 ? 1 : -1];
+
 /*
  * Stats block of the file, 9 x 0x1d2 (Win95 SE 0x51cc5c; the original writes and reads its live g_stats_data):
  * 0x000 lap times[17], 0x044 split times[85] (not in the port), 0x198 best times, quarter mile, penalties, warnings,
  * 0x1b8 wrecks, 0x1bc finish time, 0x1c0 race distance, 0x1c4 top speed, 0x1c8.. end of race data (not in the port).
  * Port fields are mapped by what they hold: lap_time is the finish time (DOS +0x1bc), prev_lap_time DOS +0x1c0.
+ * With TNFS_MAX_LAPS above 16 the lap times[TNFS_MAX_LAPS + 1] run on into the split times, up to 0x198.
  */
 void tnfs_replay_stats_save() {
 	int i;
@@ -2490,7 +2494,7 @@ void tnfs_replay_stats_save() {
 	memset(g_replay.stats, 0, sizeof(g_replay.stats));
 	for (i = 0; i < 9; i++) {
 		r = g_replay.stats[i];
-		for (j = 0; j < 17; j++) {
+		for (j = 0; j < TNFS_MAX_LAPS + 1; j++) {
 			replay_put32(r + j * 4, g_stats_data[i].lap_timer[j]);
 		}
 		replay_put32(r + 0x198, g_stats_data[i].best_accel_time_1);
@@ -2515,7 +2519,7 @@ void tnfs_replay_stats_load() {
 
 	for (i = 0; i < 9; i++) {
 		r = g_replay.stats[i];
-		for (j = 0; j < 17; j++) {
+		for (j = 0; j < TNFS_MAX_LAPS + 1; j++) {
 			g_stats_data[i].lap_timer[j] = replay_get32(r + j * 4);
 		}
 		g_stats_data[i].best_accel_time_1 = replay_get32(r + 0x198);
@@ -3170,7 +3174,7 @@ void tnfs_sim_start() {
 		g_stats_data[i].lap_time = 0;
 		g_stats_data[i].top_speed = 0;
 		g_stats_data[i].top_speed_2 = 0;
-		for (j = 0; j < 17; j++) {
+		for (j = 0; j < TNFS_MAX_LAPS + 1; j++) {
 			g_stats_data[i].lap_timer[j] = 0;
 		}
 	}

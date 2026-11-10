@@ -586,8 +586,18 @@ typedef struct tnfs_ai_opp_data {
 	int field_0x89; //0x89
 } tnfs_ai_opp_data;
 
+/*
+ * Lap time table of a stats record: 17 entries in the original (DOS / Win95 SE g_stats_data +0x000), up to 16 laps.
+ * A front end may define TNFS_MAX_LAPS (in every file that includes this one, or with -D) for longer races (port
+ * extra): the .RPL stats record keeps its size, the extra lap times go into its split times (see
+ * tnfs_replay_stats_save), at most 101 laps.
+ */
+#ifndef TNFS_MAX_LAPS
+#define TNFS_MAX_LAPS 16
+#endif
+
 typedef struct tnfs_stats_data {
-	int lap_timer[17]; //0x0
+	int lap_timer[TNFS_MAX_LAPS + 1]; //0x0
 	// ...
 	int best_accel_time_1; //0x198
 	int best_accel_time_2; //0x19c
