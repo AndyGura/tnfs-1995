@@ -61,6 +61,10 @@ signed char g_control_steer_axis; // -0x20 left .. 0x1f right
 signed char g_control_pedal_axis; // -0x1e full throttle .. 0x1e full brake
 char g_control_handbrake; // handbrake key (control word bit 15)
 char g_control_horn; // horn key (control word bit 14)
+// port extra, not in any binary: meteor steering (tnfs_control_steering_a, and the throttle ramps of
+// tnfs_control_pedals_digital), 0 off (the original), 1 on; set by the
+// front end before tnfs_init_sim, the same way for a race and for its replay
+int g_meteor_steering = 0;
 // control word per player (DOS 0x1458c4, SE 0x4fb704), latched once per control step, see tnfs_control_word_get
 int g_control_word[8];
 int g_police_on_chase = 0; //000fdb90
@@ -725,6 +729,77 @@ void tnfs_init_car() {
 /* basic game controls */
 
 /*
+ * Port extra, not in any binary: meteor steering (g_meteor_steering), an alternative keyboard steering model designed
+ * by a player so that keyboard players can keep up with analog steering. Off by default; the cars and their PBS values
+ * are unchanged, only the rate at which tnfs_control_steering_a moves steer_angle differs. Provisional model, to be
+ * retuned:
+ * - steering out (a steering key held): the original's rate times a factor by speed_local_lon at steer_angle 0
+ *   (g_meteor_out_rate: x1.2 up to 54 km/h, x2 from 122 km/h), going linearly down to x1 at |steer_angle|
+ *   TNFS_METEOR_OUT_END (75% of full lock), x1 beyond; the factors keep turning in a held full-lock corner at or
+ *   just below a wheel / pad's (tnfs_control_steering_b) on every car (meteor.md);
+ * - every car's rate comes from the common PBS ramp: velRamp_AS2 at most TNFS_METEOR_VEL_RAMP (8 of the 9 cars have
+ *   it, CZR1 0x28000), as the analog path steers every car the same;
+ * - return (no steering key held): a multiple of the rate at which the original steers out (a key held, away from the
+ *   centre) at the same speed, instead of the original's return rate: while moving forward the original returns
+ *   1 << (autoRampMultShift_AS2 + 1 + autoRampDivShift_AS2) times as fast as it steers out (x8 with every PBS), at
+ *   standstill and in reverse x1. Up to |steer_angle| TNFS_METEOR_RETURN_ANGLE (25% of full lock) the factor is
+ *   TNFS_METEOR_RETURN_SLOW_RATE (x4) up to speed_local_lon TNFS_METEOR_RETURN_SLOW_SPEED, going linearly down to
+ *   TNFS_METEOR_RETURN_RATE (x2) at TNFS_METEOR_RETURN_FAST_SPEED and beyond; from there it goes linearly up to
+ *   TNFS_METEOR_RETURN_LOCK_RATE (x8, the original's while moving forward) at full lock. "Held" is the keys' target
+ *   only, whatever the auto steer target is.
+ * The factors apply after the original's rate (attenuation, caps, auto ramp shifts) and before its clamp to the
+ * distance left, so the angle never overshoots the target. No state: the factor depends on the control step's keys,
+ * speed_local_lon and steer_angle only, so replays and seeks are exact. Fixed point only: deterministic on every
+ * platform.
+ */
+#define TNFS_METEOR_VEL_RAMP 0x23333 // velRamp_AS2 of 8 of the 9 cars, the most meteor steering uses
+#define TNFS_METEOR_OUT_END (0x1b0000 * 3 / 4) // |steer_angle| where the factor is down to x1 (75% of full lock)
+#define TNFS_METEOR_RETURN_RATE 0x20000 // 16.16 factor on the original's steering out rate with no key held, small angles, high speed (x2)
+#define TNFS_METEOR_RETURN_SLOW_RATE 0x40000 // the same at low speed (x4: half the original's return while moving forward)
+#define TNFS_METEOR_RETURN_SLOW_SPEED 0x320000 // speed_local_lon up to which TNFS_METEOR_RETURN_SLOW_RATE applies (50 m/s, 180 km/h)
+#define TNFS_METEOR_RETURN_FAST_SPEED 0x438000 // speed_local_lon from which TNFS_METEOR_RETURN_RATE applies (67.5 m/s, 243 km/h)
+#define TNFS_METEOR_RETURN_ANGLE (0x1b0000 / 4) // |steer_angle| up to which the small angle factor applies (25% of full lock)
+#define TNFS_METEOR_RETURN_LOCK_RATE 0x80000 // factor at full lock (x8, the original's return while moving forward)
+
+/*
+ * meteor steering's steering out factor at steer_angle 0 by speed_local_lon (16.16), linear between the points, the
+ * first / last factor outside them
+ */
+static const int g_meteor_out_rate[][2] = {
+	{ 0xf0000, 0x13333 }, // 15 m/s (54 km/h): x1.2
+	{ 0x140000, 0x15999 }, // 20 m/s (72 km/h): x1.35
+	{ 0x190000, 0x1c000 }, // 25 m/s (90 km/h): x1.75
+	{ 0x1e0000, 0x1cccc }, // 30 m/s (108 km/h): x1.8
+	{ 0x220000, 0x20000 }, // 34 m/s (122 km/h): x2
+};
+
+static int tnfs_meteor_out_rate(int speed) {
+	int i;
+	int n = sizeof(g_meteor_out_rate) / sizeof(g_meteor_out_rate[0]);
+
+	if (speed <= g_meteor_out_rate[0][0]) {
+		return g_meteor_out_rate[0][1];
+	}
+	for (i = 1; i < n; i++) {
+		if (speed < g_meteor_out_rate[i][0]) {
+			return g_meteor_out_rate[i - 1][1] + (int) ((long long) (g_meteor_out_rate[i][1] - g_meteor_out_rate[i - 1][1])
+					* (speed - g_meteor_out_rate[i - 1][0]) / (g_meteor_out_rate[i][0] - g_meteor_out_rate[i - 1][0]));
+		}
+	}
+	return g_meteor_out_rate[n - 1][1];
+}
+
+/*
+ * Port extra, meteor steering's pedal keys (tnfs_control_pedals_digital): with the throttle key released, or the brake
+ * key held, the throttle ramps down TNFS_METEOR_THROTTLE_OFF_RATE times per control step (the PBS off ramp, 17 on every
+ * car, x3 = 51: as fast as a pad lifted off its pedal, tnfs_control_pedals_analog's 0x33 in gear; a pad braking cuts it
+ * at once); with the throttle key held it ramps up TNFS_METEOR_THROTTLE_ON_RATE times per control step (the PBS on
+ * ramp, 25 on every car, x3 = 75: a pad's full pedal adds 0x4c). The brake ramp is unchanged. No state.
+ */
+#define TNFS_METEOR_THROTTLE_OFF_RATE 3 // throttle off ramp steps per control step
+#define TNFS_METEOR_THROTTLE_ON_RATE 3 // throttle on ramp steps per control step
+
+/*
  * steering with digital controls (Win95 0x438954 == PSX 0x800334a4 without its rally block; DOS 0x5e050 has no ">> autoRampDivShift_AS2" branch)
  */
 void tnfs_control_steering_a(tnfs_car_data *car, int input, int auto_steer) {
@@ -733,6 +808,10 @@ void tnfs_control_steering_a(tnfs_car_data *car, int input, int auto_steer) {
 	int rate;
 	int attenuation;
 	int diff;
+	int meteor_angle;
+	int meteor_key_target;
+	int meteor_out_rate;
+	int meteor_factor;
 
 	specs = car->car_specs_ptr;
 
@@ -747,6 +826,9 @@ void tnfs_control_steering_a(tnfs_car_data *car, int input, int auto_steer) {
 	} else {
 		target = 0;
 	}
+
+	// port extra: meteor steering, the keys' target (before the auto steer replaces it)
+	meteor_key_target = target;
 
 	// auto steer, when centred and moving forward
 	if (car->speed_local_lon >= 0 && target == 0) {
@@ -767,10 +849,20 @@ void tnfs_control_steering_a(tnfs_car_data *car, int input, int auto_steer) {
 	//}
 
 	rate = specs->velRamp_AS2 - attenuation;
+	// port extra: meteor steering, every car with the common ramp
+	if (g_meteor_steering && specs->velRamp_AS2 > TNFS_METEOR_VEL_RAMP) {
+		rate = TNFS_METEOR_VEL_RAMP - attenuation;
+	}
 	if (rate > 0x19999) {
 		rate = 0x19999;
 	}
 	rate *= specs->vel2_AS2;
+
+	// port extra: meteor steering, the original's rate for steering out (a key held, away from the centre)
+	meteor_out_rate = rate;
+	if (car->speed_local_lon > 0 && abs(auto_steer) < 0x400000) {
+		meteor_out_rate = rate >> specs->autoRampDivShift_AS2;
+	}
 
 	if (car->speed_local_lon > 0 && abs(auto_steer) < 0x400000) {
 		if ((auto_steer - car->steer_angle > 0 && target - car->steer_angle > 0) //
@@ -784,6 +876,37 @@ void tnfs_control_steering_a(tnfs_car_data *car, int input, int auto_steer) {
 			if (target == 0) {
 				rate = rate / 2;
 			}
+		}
+	}
+
+	// port extra: meteor steering, faster steering out, return at a multiple of the steering out rate
+	if (g_meteor_steering) {
+		meteor_angle = abs(car->steer_angle);
+		if (meteor_key_target != 0) {
+			if (meteor_angle < TNFS_METEOR_OUT_END) {
+				meteor_factor = tnfs_meteor_out_rate(car->speed_local_lon);
+				rate = (int) (((long long) rate * (meteor_factor
+						- (long long) (meteor_factor - 0x10000) * meteor_angle / TNFS_METEOR_OUT_END)) >> 16);
+			}
+		} else {
+			// the small angles' factor by the speed, then up to the full lock factor by the angle
+			if (car->speed_local_lon >= TNFS_METEOR_RETURN_FAST_SPEED) {
+				meteor_factor = TNFS_METEOR_RETURN_RATE;
+			} else if (car->speed_local_lon > TNFS_METEOR_RETURN_SLOW_SPEED) {
+				meteor_factor = TNFS_METEOR_RETURN_SLOW_RATE
+						- (int) ((long long) (TNFS_METEOR_RETURN_SLOW_RATE - TNFS_METEOR_RETURN_RATE)
+								* (car->speed_local_lon - TNFS_METEOR_RETURN_SLOW_SPEED)
+								/ (TNFS_METEOR_RETURN_FAST_SPEED - TNFS_METEOR_RETURN_SLOW_SPEED));
+			} else {
+				meteor_factor = TNFS_METEOR_RETURN_SLOW_RATE;
+			}
+			if (meteor_angle >= 0x1b0000) {
+				meteor_factor = TNFS_METEOR_RETURN_LOCK_RATE;
+			} else if (meteor_angle > TNFS_METEOR_RETURN_ANGLE) {
+				meteor_factor += (int) ((long long) (TNFS_METEOR_RETURN_LOCK_RATE - meteor_factor)
+						* (meteor_angle - TNFS_METEOR_RETURN_ANGLE) / (0x1b0000 - TNFS_METEOR_RETURN_ANGLE));
+			}
+			rate = (int) (((long long) meteor_out_rate * meteor_factor) >> 16);
 		}
 	}
 
@@ -1099,6 +1222,17 @@ int tnfs_control_auto_steer_target(tnfs_car_data *car) {
 }
 
 /*
+ * port extra: meteor steering, the throttle ramps toward the target "rate" times per control step (the original's
+ * tnfs_control_throttle(car, target) once, then this)
+ */
+static void tnfs_meteor_throttle(tnfs_car_data *car, int target, int rate) {
+	int i;
+	for (i = 1; i < rate; i++) {
+		tnfs_control_throttle(car, target);
+	}
+}
+
+/*
  * digital pedals (DOS 0x5e9c9 == Win95 0x438f00, PC version), input is the control word:
  * buttons (bits 12-15): 2 shift down, 1 shift up (down wins), 8 handbrake, 4 horn;
  * one pedal axis (bits 6-11, 0x1e centre; keyboard: throttle 5, brake 0x3c, brake wins when both are held):
@@ -1129,6 +1263,10 @@ void tnfs_control_pedals_digital(tnfs_car_data *car, int input) {
 	if (pedal < -0xf) {
 		car->brake = 0;
 		tnfs_control_throttle(car, 0xff);
+		// port extra: meteor steering, the throttle opened 3 times as fast
+		if (g_meteor_steering) {
+			tnfs_meteor_throttle(car, 0xff, TNFS_METEOR_THROTTLE_ON_RATE);
+		}
 	} else if (pedal < 0x10) {
 		if (car->brake > 100) {
 			car->brake = 100;
@@ -1139,10 +1277,18 @@ void tnfs_control_pedals_digital(tnfs_car_data *car, int input) {
 			}
 		} else {
 			tnfs_control_throttle(car, 0);
+			// port extra: meteor steering, the throttle cut 3 times as fast
+			if (g_meteor_steering) {
+				tnfs_meteor_throttle(car, 0, TNFS_METEOR_THROTTLE_OFF_RATE);
+			}
 		}
 	} else {
 		tnfs_control_brake(car, 0xff);
 		tnfs_control_throttle(car, 0);
+		// port extra: meteor steering, the throttle cut 3 times as fast
+		if (g_meteor_steering) {
+			tnfs_meteor_throttle(car, 0, TNFS_METEOR_THROTTLE_OFF_RATE);
+		}
 	}
 }
 

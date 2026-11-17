@@ -94,6 +94,11 @@ void handleKeys() {
 		case SDLK_F5:
 			tnfs_cheat_mode();
 			break;
+		case SDLK_m:
+			// meteor steering (port extra), meant to be set before the race: a replay plays with the current setting
+			g_meteor_steering = !g_meteor_steering;
+			printf("Meteor steering: %s\n", g_meteor_steering ? "on" : "off");
+			break;
 		case SDLK_F6:
 			tnfs_replay_start(1);
 			break;

@@ -697,6 +697,7 @@ extern signed char g_control_steer_axis;
 extern signed char g_control_pedal_axis;
 extern char g_control_handbrake;
 extern char g_control_horn;
+extern int g_meteor_steering;
 extern int g_control_word[8];
 extern int g_number_of_players;
 extern int g_selected_cheat;
