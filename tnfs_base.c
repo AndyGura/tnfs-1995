@@ -742,7 +742,7 @@ void tnfs_init_car() {
  * - return (no steering key held): a multiple of the rate at which the original steers out (a key held, away from the
  *   centre) at the same speed, instead of the original's return rate: while moving forward the original returns
  *   1 << (autoRampMultShift_AS2 + 1 + autoRampDivShift_AS2) times as fast as it steers out (x8 with every PBS), at
- *   standstill and in reverse x1. Up to |steer_angle| TNFS_METEOR_RETURN_ANGLE (25% of full lock) the factor is
+ *   standstill and in reverse x1. Up to |steer_angle| TNFS_METEOR_RETURN_ANGLE (30% of full lock) the factor is
  *   TNFS_METEOR_RETURN_SLOW_RATE (x4) up to speed_local_lon TNFS_METEOR_RETURN_SLOW_SPEED, going linearly down to
  *   TNFS_METEOR_RETURN_RATE (x2) at TNFS_METEOR_RETURN_FAST_SPEED and beyond; from there it goes linearly up to
  *   TNFS_METEOR_RETURN_LOCK_RATE (x8, the original's while moving forward) at full lock. "Held" is the keys' target
@@ -757,8 +757,8 @@ void tnfs_init_car() {
 #define TNFS_METEOR_RETURN_RATE 0x20000 // 16.16 factor on the original's steering out rate with no key held, small angles, high speed (x2)
 #define TNFS_METEOR_RETURN_SLOW_RATE 0x40000 // the same at low speed (x4: half the original's return while moving forward)
 #define TNFS_METEOR_RETURN_SLOW_SPEED 0x320000 // speed_local_lon up to which TNFS_METEOR_RETURN_SLOW_RATE applies (50 m/s, 180 km/h)
-#define TNFS_METEOR_RETURN_FAST_SPEED 0x438000 // speed_local_lon from which TNFS_METEOR_RETURN_RATE applies (67.5 m/s, 243 km/h)
-#define TNFS_METEOR_RETURN_ANGLE (0x1b0000 / 4) // |steer_angle| up to which the small angle factor applies (25% of full lock)
+#define TNFS_METEOR_RETURN_FAST_SPEED 0x3e8000 // speed_local_lon from which TNFS_METEOR_RETURN_RATE applies (62.5 m/s, 225 km/h)
+#define TNFS_METEOR_RETURN_ANGLE (0x1b0000 * 3 / 10) // |steer_angle| up to which the small angle factor applies (30% of full lock)
 #define TNFS_METEOR_RETURN_LOCK_RATE 0x80000 // factor at full lock (x8, the original's return while moving forward)
 
 /*

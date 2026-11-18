@@ -24,9 +24,9 @@ step (15 per second):
 - **Return** (no steering key held): a multiple of the rate at which the original steers out at the same speed. The
   original returns 8 times as fast as it steers out while moving forward (PBS ramp shifts, the same for every car), at
   standstill and in reverse at the steering out rate. The multiple goes by the angle the wheels are at and the speed:
-  - up to 25% of full lock: x4 up to 50 m/s (180 km/h), going linearly down to x2 at 67.5 m/s (243 km/h), x2
+  - up to 30% of full lock: x4 up to 50 m/s (180 km/h), going linearly down to x2 at 62.5 m/s (225 km/h), x2
     beyond: half the original's speed, then a quarter, for holding gentle high speed curves by tapping;
-  - from 25% of full lock: going linearly up to x8 at full lock, the original's while moving forward, so a release
+  - from 30% of full lock: going linearly up to x8 at full lock, the original's while moving forward, so a release
     from a large angle starts at the original's speed and slows down near the centre. x16 (faster corner exits) was
     tried and dropped: a let-go of 2 control steps between long taps then centred the wheels, which broke tapping
     through a curve.
@@ -87,18 +87,16 @@ PC. With meteor every car steers the same; the original column is the other 8 ca
 | 30 m/s | 14 -> 11 | 2 -> 3 | 1 -> 2 | 15% -> 26% | 0.22 -> 0.39 |
 | 34 m/s | 17 -> 13 | 3 -> 3 | 2 -> 2 | 12% -> 24% | 0.19 -> 0.36 |
 | 37.5 to 50 m/s | 19..20 -> 15 | 3 -> 4 | 2 -> 3 | 10% -> 20% | 0.16 -> 0.30 |
-| 55.6 m/s (200 km/h) | 20 -> 15 | 3 -> 4 | 2 -> 3 | 10% -> 20% | 0.16 -> 0.33 |
-| 62.5 m/s | 20 -> 15 | 3 -> 5 | 2 -> 3 | 10% -> 20% | 0.16 -> 0.37 |
-| 65 m/s | 20 -> 15 | 3 -> 5 | 2 -> 4 | 10% -> 20% | 0.16 -> 0.39 |
-| 67.5 m/s and up | 20 -> 15 | 3 -> 5 | 2 -> 4 | 10% -> 20% | 0.16 -> 0.40 |
+| 55.6 m/s (200 km/h) | 20 -> 15 | 3 -> 4 | 2 -> 3 | 10% -> 20% | 0.16 -> 0.34 |
+| 62.5 m/s (225 km/h) and up | 20 -> 15 | 3 -> 6 | 2 -> 4 | 10% -> 20% | 0.16 -> 0.40 |
 
 Steering x time: the angle after each step of the tap, summed until the wheels are centred, in full lock x control
 steps (how much the tap steers). While moving, a 2-step tap is centred 1 step after the release in the original and
 with meteor up to 50 m/s, 2 steps after it with meteor above 50 m/s. A release from small angles (20% of lock) moves
-20% of lock per step up to 50 m/s, 17.4% at 55.6 m/s (200 km/h), 13.3% at 62.5 m/s and 10.4% from 67.5 m/s.
+20% of lock per step up to 50 m/s, 16.1% at 55.6 m/s (200 km/h), 12.4% at 60 m/s and 10.4% from 62.5 m/s.
 
-Full lock to centre at 67.5 m/s and up, % of lock after each control step: original 100, 58.5, 17, 0; meteor 100,
-58.5, 34.2, 20, 9.7, 0.
+Full lock to centre at 62.5 m/s and up, % of lock after each control step: original 100, 58.5, 17, 0; meteor 100,
+58.5, 35.5, 22.7, 12.3, 1.9, 0.
 
 ## Using it
 
@@ -112,8 +110,8 @@ Full lock to centre at 67.5 m/s and up, % of lock after each control step: origi
   `TNFS_METEOR_VEL_RAMP` 0x23333 (the common steering ramp), `TNFS_METEOR_OUT_END` 0x144000 (75% of lock, back to
   x1); the return's factors on the steering out rate (16.16):
   `TNFS_METEOR_RETURN_SLOW_RATE` 0x40000 (x4, small angles up to `TNFS_METEOR_RETURN_SLOW_SPEED` 0x320000, 50 m/s),
-  `TNFS_METEOR_RETURN_RATE` 0x20000 (x2, small angles from `TNFS_METEOR_RETURN_FAST_SPEED` 0x438000, 67.5 m/s),
-  `TNFS_METEOR_RETURN_ANGLE` 0x6c000 (25% of lock, the end of the small angles), `TNFS_METEOR_RETURN_LOCK_RATE`
+  `TNFS_METEOR_RETURN_RATE` 0x20000 (x2, small angles from `TNFS_METEOR_RETURN_FAST_SPEED` 0x3e8000, 62.5 m/s),
+  `TNFS_METEOR_RETURN_ANGLE` 0x81999 (30% of lock, the end of the small angles), `TNFS_METEOR_RETURN_LOCK_RATE`
   0x80000 (x8 at full lock).
 
 ## Verification
